@@ -1,9 +1,14 @@
-"""策略库业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""策略库业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+列表/详情/登记/流转的通用写法在 ``app.services.base.CatalogService``；这里只保留策略库
+自己的字段、状态序列和动作表，并在「发布策略」动作后把发布记录同步到实时决策的生效会话。
+"""
 from __future__ import annotations
 
 from typing import Any
 
-from app.store import store
+from app.services.base import CatalogService
+from app.services.decision import DecisionError, ledger
 
 MODULE = "tacticlib"
 REQUIRED_FIELDS = ["策略编号", "策略名称", "策略类型"]
@@ -12,42 +17,17 @@ ACTION_RULES = {"提交策略评审": "策略评审中", "发布策略": "已发
 NEGATIVE_ACTIONS = []
 
 
-class TacticlibService:
-    def list_entries(
-        self,
-        *,
-        keyword: str | None = None,
-        status: str | None = None,
-        page: int = 1,
-        size: int = 20,
-    ) -> tuple[list[dict[str, Any]], int]:
-        rows = store.rows(MODULE)
-        if keyword:
-            rows = [row for row in rows if keyword in str(row.get("策略编号", ""))]
-        if status:
-            rows = [row for row in rows if row.get("status") == status]
-        total = len(rows)
-        start = max(page - 1, 0) * size
-        return rows[start:start + size], total
-
-    def get_entry(self, entry_id: int) -> dict[str, Any] | None:
-        return store.find(MODULE, entry_id)
-
-    def create_entry(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
-        missing = [field for field in REQUIRED_FIELDS if not str(values.get(field) or "").strip()]
-        if missing:
-            return None, missing
-        rows = store.rows(MODULE)
-        entry = {"id": max((int(row.get("id", 0)) for row in rows), default=0) + 1}
-        entry.update({field: values.get(field) for field in REQUIRED_FIELDS})
-        entry["status"] = STATUS_ORDER[0]
-        entry["pending"] = True
-        entry["abnormal"] = False
-        rows.append(entry)
-        return entry, []
+class TacticlibService(CatalogService):
+    MODULE = MODULE
+    REQUIRED_FIELDS = REQUIRED_FIELDS
+    STATUS_ORDER = STATUS_ORDER
+    ACTION_RULES = ACTION_RULES
+    NEGATIVE_ACTIONS = NEGATIVE_ACTIONS
+    ENTITY_NAME = "运营策略"
+    SCOPE_NAME = "策略库"
 
     def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
-        entry = store.find(MODULE, entry_id)
+        entry = self.get_entry(entry_id)
         if entry is None:
             return None, f"运营策略 {entry_id} 不存在或已归档"
         if action not in ACTION_RULES:
@@ -55,7 +35,27 @@ class TacticlibService:
         target = ACTION_RULES[action]
         if target not in STATUS_ORDER:
             return None, f"目标状态「{target}」不在允许的状态序列里"
+
+        previous = {
+            "status": entry.get("status"),
+            "pending": entry.get("pending"),
+            "abnormal": entry.get("abnormal"),
+        }
         entry["status"] = target
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
+
+        if action == "发布策略":
+            try:
+                ledger.on_tactic_publish(entry)
+            except DecisionError as exc:
+                # 裁决失败：回退到原完整边界，策略状态与实时规则都不留下半条变更。
+                entry.update(previous)
+                return None, str(exc)
         return entry, f"运营策略已{action}"
+
+    def publish_records(self, entry_id: int) -> list[dict[str, Any]] | None:
+        entry = self.get_entry(entry_id)
+        if entry is None:
+            return None
+        return ledger.publish_records(entry)

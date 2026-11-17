@@ -75,13 +75,23 @@ export default function RealtimeView() {
         method: 'POST',
         body: JSON.stringify({ action }),
       })
-      if (!response.ok) {
-        throw new Error('实时决策动作未生效，请稍后重试')
+      const payload = await response.json()
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.message ?? '实时决策动作未生效，请稍后重试')
       }
       await reload()
+      // 生效规则会登记规则命中结果：动作完成后开新页面，再回清单核对关联的执行明细。
+      if (action === '生效规则') {
+        const code = String(payload.entry?.['规则编号'] ?? row['规则编号'] ?? '')
+        window.open(`${window.location.origin}/decision?ref=${encodeURIComponent(code)}`, '_blank')
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '实时决策操作失败')
     }
+  }
+
+  function openDecisionDetail(row: Row) {
+    window.open(`${window.location.origin}/decision?ref=${encodeURIComponent(String(row['规则编号'] ?? ''))}`, '_blank')
   }
 
   return (
@@ -89,7 +99,7 @@ export default function RealtimeView() {
       <header className="page-head">
         <div>
           <h2>实时决策管理</h2>
-          <p className="page-desc">配置实时运营决策规则，基于用户实时行为触发个性化动作。</p>
+          <p className="page-desc">配置实时运营决策规则，基于用户实时行为触发个性化动作。规则命中结果与策略库发布记录共享同一生效会话，最终执行动作唯一。</p>
         </div>
         <div className="page-actions">
           <button className="btn primary" type="button" onClick={() => setErrorMessage('决策规则登记入口尚未接入审批流')}>
@@ -142,6 +152,9 @@ export default function RealtimeView() {
                     {action}
                   </button>
                 ))}
+                <button className="link" type="button" onClick={() => openDecisionDetail(row)}>
+                  执行明细
+                </button>
               </td>
             </tr>
           ))}

@@ -58,6 +58,15 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     return ActionResult(ok=True, message=message, entry=entry)
 
 
+@router.get("/{entry_id}/publish-records", response_model=dict)
+def list_publish_records(entry_id: int) -> dict[str, Any]:
+    """读取运营策略的发布记录：与规则命中结果共享同一生效会话与数据版本。"""
+    records = service.publish_records(entry_id)
+    if records is None:
+        raise HTTPException(status_code=404, detail=f"运营策略 {entry_id} 不存在或已归档")
+    return {"entry": entry_id, "total": len(records), "items": records}
+
+
 @router.get("/export")
 def export_entries() -> dict[str, Any]:
     """导出策略库清单：返回当前过滤条件下的全量数据。"""

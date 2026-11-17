@@ -244,3 +244,15 @@ class TacticlibEntry(BaseModel):
     field_5: str | None = None  # 生效周期
     field_6: str | None = None  # 策略评分
     field_7: str | None = None  # 使用次数
+
+
+class DecisionRegisterPayload(BaseModel):
+    """登记执行明细和确认动作共用的入参。
+
+    ``sessions`` 里每条生效会话按原口径给出触发对象、触发条件、优先级与执行动作；
+    ``auto_confirm`` 默认不自动闭环，登记先落「待处理明细」，核对后再确认。
+    """
+
+    sessions: list[dict[str, Any]] = Field(default_factory=list)
+    auto_confirm: bool = False
+    action: str | None = None

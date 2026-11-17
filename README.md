@@ -67,6 +67,30 @@ npm run dev
 | 推送计划 | `pushplan` | 推送方案 | 方案编号、推送内容、目标人群 |
 | 指标归因 | `metricdrill` | 归因分析 | 分析编号、目标指标、波动方向 |
 | 策略库 | `tacticlib` | 运营策略 | 策略编号、策略名称、策略类型 |
+| 实时决策执行明细 | `decision` | 执行明细 | 明细编号、触发对象、最终执行动作 |
+
+## 实时决策执行明细
+
+策略库发布策略与实时决策生效规则是同一份运营策略的两个承接方，动作冲突在这里统一裁决：
+
+- `GET /api/decision/executions` 实时决策待处理明细（`status` 待处理/已闭环、`ref` 策略或规则编号、
+  `baseline` 只看核对基准）。
+- `POST /api/decision/executions` 登记生效会话并计算裁决，同一触发对象只出一条明细；重复登记收敛
+  为同一条记录，失败整体回退。
+- `GET /api/decision/executions/{id}/replay` 回放：触发条件口径、共享生效会话、裁决过程、落败原因。
+- `GET /api/decision/versions` 数据版本核对。
+- `GET /api/tacticlib/{id}/publish-records` 策略库发布记录，与规则命中结果共用生效会话。
+
+裁决顺序是「优先级 → 历史已确认结果 → 登记基准」。同一触发对象收到两个同优先级且历史未规定
+先后的生效会话时，按登记基准保留先登记的会话；会话开始/完成时间只记录、不参与裁决，因此既有
+已确认结果与对外响应结构不会因时间字段抖动而改变。`REAL-0003` 作为核对基准记录，只读投影存量
+`决策条件` 与 `执行动作`。
+
+## 回归
+
+```bash
+cd backend && .venv/bin/python -m unittest tests.test_decision
+```
 
 ## 约定
 

@@ -75,13 +75,27 @@ export default function TacticlibView() {
         method: 'POST',
         body: JSON.stringify({ action }),
       })
-      if (!response.ok) {
-        throw new Error('策略库动作未生效，请稍后重试')
+      const payload = await response.json()
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.message ?? '策略库动作未生效，请稍后重试')
       }
       await reload()
+      // 发布策略会同步生成/收敛实时决策执行明细：动作完成后开新页面，再回清单核对关联记录。
+      if (action === '发布策略') {
+        const code = String(payload.entry?.['策略编号'] ?? row['策略编号'] ?? '')
+        window.open(`${window.location.origin}/decision?ref=${encodeURIComponent(code)}`, '_blank')
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '策略库操作失败')
     }
+  }
+
+  function openPublishRecords(row: Row) {
+    window.open(`${ENDPOINT}/${row.id}/publish-records`, '_blank')
+  }
+
+  function openDecisionDetail(row: Row) {
+    window.open(`${window.location.origin}/decision?ref=${encodeURIComponent(String(row['策略编号'] ?? ''))}`, '_blank')
   }
 
   return (
@@ -89,7 +103,7 @@ export default function TacticlibView() {
       <header className="page-head">
         <div>
           <h2>策略库管理</h2>
-          <p className="page-desc">维护可复用的运营策略库，按类型、触发条件和执行动作分类管理。</p>
+          <p className="page-desc">维护可复用的运营策略库，按类型、触发条件和执行动作分类管理。发布策略会同步到实时决策，发布记录与规则命中结果共享同一生效会话。</p>
         </div>
         <div className="page-actions">
           <button className="btn primary" type="button" onClick={() => setErrorMessage('运营策略登记入口尚未接入审批流')}>
@@ -142,6 +156,12 @@ export default function TacticlibView() {
                     {action}
                   </button>
                 ))}
+                <button className="link" type="button" onClick={() => openPublishRecords(row)}>
+                  发布记录
+                </button>
+                <button className="link" type="button" onClick={() => openDecisionDetail(row)}>
+                  执行明细
+                </button>
               </td>
             </tr>
           ))}

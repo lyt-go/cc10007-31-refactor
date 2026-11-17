@@ -85,3 +85,6 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# 前端构建产物（vite build 生成）
+frontend/dist/
